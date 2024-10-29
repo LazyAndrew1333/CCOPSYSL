@@ -20,7 +20,7 @@ public class ResourceGraph extends ApplicationFrame {
 
     private XYSeries cpuSeries;
     private XYSeries memorySeries;
-    private List<XYSeries> diskSeriesList;
+    private List<XYSeries> diskSeriesList;  // List to hold series for each disk
     private int timeElapsed = 0;
 
     public ResourceGraph(String title) {
@@ -29,6 +29,7 @@ public class ResourceGraph extends ApplicationFrame {
         memorySeries = new XYSeries("Memory Usage (MB)");
         diskSeriesList = new ArrayList<>();
 
+        // Create the CPU graph
         XYSeriesCollection cpuDataset = new XYSeriesCollection();
         cpuDataset.addSeries(cpuSeries);
         JFreeChart cpuChart = ChartFactory.createXYLineChart(
@@ -38,6 +39,7 @@ public class ResourceGraph extends ApplicationFrame {
                 cpuDataset
         );
 
+        // Customize CPU chart renderer
         XYLineAndShapeRenderer cpuRenderer = new XYLineAndShapeRenderer();
         cpuRenderer.setSeriesPaint(0, Color.decode("#00C7FD"));
         cpuRenderer.setSeriesShapesVisible(0, false);
@@ -45,6 +47,7 @@ public class ResourceGraph extends ApplicationFrame {
         ChartPanel cpuChartPanel = new ChartPanel(cpuChart);
         cpuChartPanel.setPreferredSize(new Dimension(800, 600));
 
+        // Create the Memory graph
         XYSeriesCollection memoryDataset = new XYSeriesCollection();
         memoryDataset.addSeries(memorySeries);
         JFreeChart memoryChart = ChartFactory.createXYLineChart(
@@ -54,6 +57,7 @@ public class ResourceGraph extends ApplicationFrame {
                 memoryDataset
         );
 
+        // Customize Memory chart renderer
         XYLineAndShapeRenderer memoryRenderer = new XYLineAndShapeRenderer();
         memoryRenderer.setSeriesPaint(0, Color.BLACK);
         memoryRenderer.setSeriesShapesVisible(0, false);
@@ -61,29 +65,35 @@ public class ResourceGraph extends ApplicationFrame {
         ChartPanel memoryChartPanel = new ChartPanel(memoryChart);
         memoryChartPanel.setPreferredSize(new Dimension(800, 600));
 
-        Panel mainPanel = new Panel(new GridLayout(0, 1));
+        // Create disk usage charts for each detected disk
+        Panel mainPanel = new Panel(new GridLayout(0, 1));  // Use dynamic rows for disks
         mainPanel.add(cpuChartPanel);
         mainPanel.add(memoryChartPanel);
 
         SystemInfo systemInfo = new SystemInfo();
         List<HWDiskStore> diskStores = systemInfo.getHardware().getDiskStores();
 
+        // Initialize series and charts for each disk
         for (HWDiskStore disk : diskStores) {
+            // Extract "DRIVE#" from the disk name
             String diskName = disk.getName().replace("\\\\.\\PHYSICAL", ""); 
         
+            // Create a series for the disk load
             XYSeries diskSeries = new XYSeries(diskName + " Load (%)");
             diskSeriesList.add(diskSeries);
         
             XYSeriesCollection diskDataset = new XYSeriesCollection();
             diskDataset.addSeries(diskSeries);
         
+            // Create a disk load chart
             JFreeChart diskChart = ChartFactory.createXYLineChart(
-                    diskName + " Disk Load Over Time",
+                    diskName + " Disk Load Over Time",  // Use only the simplified disk name
                     "Time (s)",
                     "Disk Load (%)",
                     diskDataset
             );
         
+            // Customize Disk chart renderer
             XYLineAndShapeRenderer diskRenderer = new XYLineAndShapeRenderer();
             diskRenderer.setSeriesPaint(0, Color.RED);
             diskRenderer.setSeriesShapesVisible(0, false);
@@ -97,6 +107,7 @@ public class ResourceGraph extends ApplicationFrame {
 
         setContentPane(mainPanel);
 
+        // Start updating the graphs
         Timer timer = new Timer();
         timer.schedule(new TimerTask() {
             @Override
@@ -110,43 +121,58 @@ public class ResourceGraph extends ApplicationFrame {
         CentralProcessor processor = systemInfo.getHardware().getProcessor();
         GlobalMemory memory = systemInfo.getHardware().getMemory();
     
+        // Get the current CPU ticks for calculating CPU load
         long[] prevTicks = processor.getSystemCpuLoadTicks();
     
+        // Sleep for a second to get the updated ticks
         try {
             Thread.sleep(1000);
         } catch (InterruptedException e) {
             e.printStackTrace();
         }
     
+        // Get the CPU load using the previous ticks
         double cpuLoad = processor.getSystemCpuLoadBetweenTicks(prevTicks) * 100;
     
+        // Get memory usage
         long memoryUsedMB = (memory.getTotal() - memory.getAvailable()) / (1024 * 1024);
     
+        // Update CPU and Memory series
         cpuSeries.add(timeElapsed, cpuLoad);
         memorySeries.add(timeElapsed, memoryUsedMB);
     
+        // Update each disk's load based on read/write activity
         for (int i = 0; i < diskStores.size(); i++) {
             HWDiskStore disk = diskStores.get(i);
             long prevRead = disk.getReadBytes();
             long prevWrite = disk.getWriteBytes();
     
+            // Refresh disk stats to get updated read/write bytes
             disk.updateAttributes();
             long currRead = disk.getReadBytes();
             long currWrite = disk.getWriteBytes();
     
+            // Calculate the number of bytes transferred during the interval
             long readDifference = currRead - prevRead;
             long writeDifference = currWrite - prevWrite;
     
+            // Total I/O in bytes
             long totalIoBytes = readDifference + writeDifference;
-            double diskMaxThroughput = 200.0 * 1024 * 1024;
+    
+            // Assuming a disk has a maximum throughput (example: 200 MB/s for an SSD)
+            double diskMaxThroughput = 200.0 * 1024 * 1024; // Adjust based on your disks
+    
+            // Calculate load percentage
             double loadPercentage = (totalIoBytes / diskMaxThroughput) * 100;
-          
+    
+            // Ensure loadPercentage is capped at 100%
             loadPercentage = Math.min(loadPercentage, 100.0);
     
+            // Update the disk series for the specific disk
             diskSeriesList.get(i).add(timeElapsed, loadPercentage);
         }
     
-        timeElapsed++;
+        timeElapsed++; // Increment time
     }
     
 
